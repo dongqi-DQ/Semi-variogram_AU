@@ -1,5 +1,5 @@
-__pycache__
-__pycache__/*
+__pycache__/
+pre_process_BoM/__pycache__/
 .ipynb_checkpoints/
-.ipynb_checkpoints/*
+pre_process_BoM/.ipynb_checkpoints/
 
