@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[2]:
+# In[1]:
 
 
 import xarray as xr
@@ -16,14 +16,14 @@ from multiprocess import Pool
 from IPython.display import clear_output
 
 
-# In[3]:
+# In[2]:
 
 
 ## my own directory
 os.chdir("/g/data/k10/dl6968/Semi-variogram_AU/")
 
 
-# In[4]:
+# In[3]:
 
 
 ### functions 
@@ -270,13 +270,13 @@ def process_date_bins_and_stations(m):
     return local_station_dict, local_bins_dict
 
 
-# In[5]:
+# In[4]:
 
 
 ##### main script starts here
 ## find available stations 
 
-df = pd.read_csv("/g/data/w40/dl6968/CLEX_analysis/BoM_daily_stations.csv")
+df = pd.read_csv("./data/BoM_daily_stations.csv")
 
 ## remove stations that do not have data 
 exclude_stn = []
@@ -303,7 +303,7 @@ for i in range(0, len(df)):
     daily_lon.append(df["Longitude"].iloc[i])
 
 
-# In[6]:
+# In[5]:
 
 
 ## for stations to be a neighbour station
@@ -314,23 +314,24 @@ id_list = list(df_spec["ID"])
 print(f"{len(id_list)} stations in the list")
 
 
-# In[7]:
+# In[6]:
 
 
 percentile = 0.90 ## this is for extreme days
 pc_str = "P90" ## this is for the neighbours in the dataframe
 df_pc = pd.read_csv("./data/BoM_stn_p90.csv")
-max_pool = 20 ## number of CPUs for processing
+max_pool = 28 ## number of CPUs for processing
 max_radius = 350
 
 
-# In[11]:
+# In[ ]:
 
 
 for spec_id in id_list:
     csv_file = f"./data/all_AU_p90/{spec_id}_station_list_all_events.csv"
     ## do semi-variogram if file not exists
     if not os.path.exists(csv_file):
+        print(f"Processing station {spec_id}")
         cent_lat, cent_lon = df[df["ID"]==spec_id]["Latitude"].values[0],  df[df["ID"]==spec_id]["Longitude"].values[0]
         df_search1 = find_neighbour_stations(df_neighbour, df_neighbour["Latitude"], df_neighbour["Longitude"], df_neighbour['ID'], cent_lat, cent_lon, max_radius)
         df_search = df_search1[(df_search1["ID"] != spec_id) & (df_search1["End_Year"]>=1960)].copy()
