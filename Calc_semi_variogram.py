@@ -23,7 +23,7 @@ from IPython.display import clear_output
 os.chdir("/g/data/k10/dl6968/Semi-variogram_AU/")
 
 
-# In[3]:
+# In[25]:
 
 
 ### functions 
@@ -117,22 +117,22 @@ def calculate_bearing(lat1, lon1, lat2, lon2):
 
     return compass_bearing
 
-def calc_p99(ds,var_name=None):
+def calc_p90(ds,var_name=None):
     precip_da = ds
 
     if var_name!=None:
         precip_da = ds[var_name].load()
     filtered_da = precip_da.where(precip_da > 1, drop=True)
     # Compute the 99th percentile along the time dimension
-    p99 = filtered_da.quantile(percentile, dim='time')
+    p90 = filtered_da.quantile(percentile, dim='time')
     
-    # Find the datetimes where the rain rate is higher than the 99th percentile
-    rain_rate_above_p99 = precip_da > p99
+    # Find the datetimes where the rain rate is higher than the 90th percentile
+    rain_rate_above_p90 = precip_da >= p90
     
-    # Get the datetimes where rain rate is higher than the 99th percentile
-    datetimes_above_p99 = ds['time'][rain_rate_above_p99]
+    # Get the datetimes where rain rate is higher than the 90th percentile
+    datetimes_above_p90 = ds['time'][rain_rate_above_p90]
 
-    return p99, datetimes_above_p99
+    return p90, datetimes_above_p90
 
 def find_val_extreme(station_id):
     '''
@@ -140,13 +140,14 @@ def find_val_extreme(station_id):
     is also an extreme day for a neighbour station
     '''
     search_id = str(station_id).zfill(6)
-    ds_search = xr.open_dataset(f"/g/data/w40/dl6968/BoM_daily_stations/percentiles/{search_id}.nc")
+    
+    ds_search = xr.open_dataset(f"/g/data/k10/dl6968/BoM_daily_station/prcp_pc_ts/{search_id}.nc")
     precip_da = ds_search["prcp"]
     stn_p90 = df_pc[df_pc["ID"]==station_id][pc_str].values[0]
     if stn_p90>0:
     ## I've already filled in all the no data days with -1
-        extreme_val = precip_da.sel(time=extreme_dates, method="nearest")
-        extreme_pc = ds_search["percentile"].sel(time=extreme_dates, method="nearest")
+        extreme_val = precip_da.sel(time=extreme_dates)
+        extreme_pc = ds_search["percentile"].sel(time=extreme_dates)
         ## flag NaN days with -1, below p90 days 0, and take the values for above p90 days
         extreme_flag =  extreme_val.copy()
         extreme_flag = extreme_flag.where(extreme_val>=stn_p90, 0)
@@ -162,65 +163,28 @@ def find_val_extreme(station_id):
         extreme_flag[:] = -1
         return extreme_val.flatten(), extreme_flag.flatten(), extreme_pc.flatten()
         
-def calc_gamma(zx1, zxh):
-    '''
-    Equation 1 in Touma et al. (2018)
-    '''
-    gamma = 0.5*(zx1-zxh)**2
-    return gamma
 
-def process_gamma_distance(dates):
+
+def process_avail_distance(dates):
     '''
-    get semi-variogram for each extreme day using the flags
+    get distance between center and neighbor stations for plotting later
+    also set filter for valid stations
     '''
-    local_N11 = np.zeros(bins.shape[0])  # Local array for N11 count per bin
-    local_N10 = np.zeros(bins.shape[0])  # Local array for N10 count per bin
     val_arr = df_flag[dates].values
     local_distance = df_search["Distance"].values
-    local_gamma = np.zeros_like(val_arr)
-    
     
     ## need to have more than 20 stations in the neighbourhood
     count = len(np.argwhere(val_arr>=0))
     if count >= 20:
-        # Calculate distance and gamma for each station
-        flag_val = df_flag[dates].values
-        ## if flag > 0, then it's an extreme for the neighbour station
-        ## else not an extreme so Zxh=0
-        local_Zxh = np.array([1 if i > 0 else 0 for i in flag_val ])
-        local_gamma = calc_gamma(Zx1, local_Zxh)
-        ## if flag == -1, mark gamma as -1, do not include it in the semi-variogram
-        local_gamma[flag_val ==-1] = -1
-        local_Zxh[flag_val ==-1] = -1
-        ## need at least two stations in one bin to give a reasonable estimation
-        if len(np.argwhere(local_Zxh==1))>=2:
-            bin_ids = np.digitize(df_search["Distance"], bins) - 1  # Get bin IDs, adjust for Python indexing
-            bin_ids = np.clip(bin_ids, 0, len(bins) - 1)  # Ensure bin IDs are valid
-            
-            # Masks for gamma values of each bin
-            ## Each neighbour station has a bin ID
-            ## mask N11 is True when local_gamma ==0, similar for N10
-            ## -1 is not counted
-            mask_N11 = (local_gamma == 0)
-            mask_N10 = (local_gamma == 0.5)
-            
-            # Count pairs for each bin using np.bincount with weights
-            local_N11 += np.bincount(bin_ids[mask_N11], minlength=len(bins))
-            local_N10 += np.bincount(bin_ids[mask_N10], minlength=len(bins))
                 
-        return dates, local_N11, local_N10, local_distance, local_gamma
+        return dates, local_distance
     else:
-        return dates, None , None, None, None
+        return dates, None 
 
-def calc_ratio_gamma(N11,N10):
-    ratio = 0.5*(N10/(N10+N11))
-    if len(ratio.shape)==2:
-        ratio[:,0] = 0
-    if len(ratio.shape)==1:
-        ratio[0] = 0    
-    return ratio
+
+
     
-def process_date_bins_and_stations(m):
+def process_date_stations(m):
     dates = extreme_dates[m]
     
     # Preallocate and avoid repetitive dictionary creation
@@ -229,14 +193,7 @@ def process_date_bins_and_stations(m):
         "Neighb_stn": [], "lat": [], "lon": [], "distance": [], "angle": [],
         "val": [], "flag": [], "pc": []
     }
-    local_bins_dict = {
-        "Day": [m] * len(bins),
-        "Date": [dates] * len(bins),
-        "Bins": bins.tolist(),
-        "N11": N11_arr[m, :].tolist(),
-        "N10": N10_arr[m, :].tolist(),
-        "gamma": ratio_arr[m, :].tolist()
-    }
+
 
     # Filter valid stations first
     valid_mask = df_val[dates] > -1
@@ -267,10 +224,16 @@ def process_date_bins_and_stations(m):
     local_station_dict["flag"] = flags.tolist()
     local_station_dict["pc"] = pcs.tolist()
 
-    return local_station_dict, local_bins_dict
+    return local_station_dict
 
 
-# In[4]:
+# In[ ]:
+
+
+
+
+
+# In[13]:
 
 
 ##### main script starts here
@@ -282,9 +245,9 @@ df = pd.read_csv("./data/BoM_daily_stations.csv")
 exclude_stn = []
 for stn_id in df["ID"]:
     bom_id = str(stn_id).zfill(6)
-    if not os.path.exists(f'/g/data/w40/dl6968/BoM_daily_stations/netcdf/{bom_id}.nc'):
-        exclude_stn.append(stn_id)
-    if not os.path.exists(f'/g/data/w40/dl6968/BoM_daily_stations/percentiles/{bom_id}.nc'):
+    # if not os.path.exists(f'/g/data/w40/dl6968/BoM_daily_stations/netcdf/{bom_id}.nc'):
+    #     exclude_stn.append(stn_id)
+    if not os.path.exists(f'/g/data/k10/dl6968/BoM_daily_station/prcp_pc_ts/{bom_id}.nc'):
         if stn_id not in exclude_stn:
             exclude_stn.append(stn_id)
 
@@ -303,11 +266,11 @@ for i in range(0, len(df)):
     daily_lon.append(df["Longitude"].iloc[i])
 
 
-# In[5]:
+# In[18]:
 
 
 ## for stations to be a neighbour station
-df_neighbour = df[df["Years"] >=10]
+df_neighbour = df[df["Years"] >=20]
 ## for stations to be a station to do semi-variogram
 df_spec = df[df["Years"] >=20]
 id_list = list(df_spec["ID"])
@@ -348,10 +311,10 @@ for spec_id in id_list:
         if len(df_search)<20:
             continue
         else:
-            ds_spec = xr.open_dataset("/g/data/w40/dl6968/BoM_daily_stations/netcdf/"+str(spec_id).zfill(6)+".nc")
+            ds_spec = xr.open_dataset("/g/data/k10/dl6968/BoM_daily_station/prcp_pc_ts/"+str(spec_id).zfill(6)+".nc")
             var = "prcp"
             ds_sel = ds_spec.sel(time=slice("1940-03-02", "2024-06-30"))
-            prcp_p99, dt_p99 = calc_p99(ds_sel, var)
+            prcp_p99, dt_p99 = calc_p90(ds_sel, var)
             ds_sel.close()
             ds_spec.close()
             extreme_dates = []
@@ -418,20 +381,16 @@ for spec_id in id_list:
             # Reset the index and add the 'ID' column
             df_pc_val.reset_index(inplace=True)
             df_pc_val.rename(columns={'index': 'ID'}, inplace=True)
-        ### semi-variogram
-        bins = np.arange(5, 360, 10)
-        N11_arr = np.zeros((len(extreme_dates),bins.shape[0]))
-        N10_arr = np.zeros((len(extreme_dates),bins.shape[0]))
+        ### station distance for plotting later
         
         distance_arr = np.zeros((len(extreme_dates), len(df_search)))
-        gamma_arr = np.zeros((len(extreme_dates), len(df_search)))
-        Zx1 = 1
-        print("Semi-variogram")
+        
+        print("Calc station distance")
         
         with Pool(max_pool) as p:
             pool_outputs = list(
                 tqdm(
-                    p.imap(process_gamma_distance,
+                    p.imap(process_avail_distance,
                            extreme_dates),
                     total=len(extreme_dates),
                     position=0, leave=True
@@ -439,37 +398,31 @@ for spec_id in id_list:
             )
         p.join()
         
-        faulty_dates = []
+
         for i in range(0, len(extreme_dates)):
             date= pool_outputs[i][0]
             ## make sure the dates align
             if date == extreme_dates[i]:
                 if pool_outputs[i][1] is None:
                     ## if results are None the data will be set to NaNs
-                    N11_arr[i, :] = np.nan
-                    N10_arr[i,:] = np.nan
                     distance_arr[i,:] = np.nan
-                    gamma_arr[i,:] = np.nan
-                    faulty_dates.append(date)
                 else:
-                    N11_arr[i, :] = pool_outputs[i][1]
-                    N10_arr[i, :] = pool_outputs[i][2]
-                    distance_arr[i,:] = pool_outputs[i][3]
-                    gamma_arr[i,:] = pool_outputs[i][4]
+                   
+                    distance_arr[i,:] = pool_outputs[i][1]
         
-        ratio_arr = calc_ratio_gamma(N11_arr,N10_arr)
+        
         ### save to CSV
         # Main parallel loop
         station_dict = {"Day": [], "Date": [], "Spec_stn":[], "cent_lat": [], "cent_lon":[],"Neighb_stn": [],
                         "lat": [], "lon": [], "distance": [], "angle": [], "val": [], "flag": [],"pc":[]}
-        bins_dict = {"Day": [], "Date": [], "Bins": [], "N11": [], "N10": [], "gamma": []}
+
         
         print("Save to CSV")
         
         with Pool(max_pool) as p:
             pool_outputs = list(
                 tqdm(
-                    p.imap(process_date_bins_and_stations,
+                    p.imap(process_date_stations,
                            range(0,len(extreme_dates))),
                     total=len(extreme_dates),
                     position=0, leave=True
@@ -480,15 +433,12 @@ for spec_id in id_list:
         for results in pool_outputs:
             
             for key in station_dict:
-                        station_dict[key].extend(results[0][key])
-            for key in bins_dict:
-                bins_dict[key].extend(results[1][key])
+                        station_dict[key].extend(results[key])
         
         df_stations =  pd.DataFrame.from_dict(station_dict)
-        df_bins = pd.DataFrame.from_dict(bins_dict)
         
         df_stations.to_csv(csv_file, index=False)
-        df_bins.to_csv(f"./data/all_AU_p90/{spec_id}_bins_list_all_events.csv", index=False)
+        
         clear_output(wait=True)
 
 
