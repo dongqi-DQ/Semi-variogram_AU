@@ -15,7 +15,7 @@ In `pre_process_BoM`:
 
 `Moving_semi_variogram_season.ipynb`: find neighbour stations for each station, and save the data for each station. The station CSVs have information for all neighbour stations.
 
-`Semi-Variogram_Pairing.ipynb`: Pairing N11 and N10 with a moving neighbourhood (up to 700 km). The script will output bins CSVs for N11 and N10 pairs.
+`Semi-Variogram_Pairing.ipynb`: Pairing N11 and N10 with a moving neighbourhood (up to 500 km). The script will output bins CSVs for N11 and N10 pairs.
 
 
 `Calc_scale_alpha.ipynb`: calculates the alpha value as shown in Equation 3 in Touma et al. (2018). This will output CSV files with scale of each extreme day for each station. Each station will end up with three CSV files marked by the station ID. Each file has all the extreme day info for the station.  
