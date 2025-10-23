@@ -81,7 +81,7 @@ def calculate_moving_pairs(args):
             N10 = np.zeros_like(bins, dtype=int)
             
             # Precompute bin indices for all pairs
-            bin_indices = np.digitize(distances, bins,right=False) - 1
+            bin_indices = np.digitize(distances, bins) - 1
             
             # Create masks for valid bin indices
             valid_mask = (bin_indices >= 0) & (bin_indices < len(bins))
@@ -113,7 +113,7 @@ df_dist = pd.read_csv("./data/pairwise_distances.csv", index_col=0)
 
 
 # %%
-files = sorted(glob("./data/seasonal_p90_500km/*_station_moving_list_all_events.csv"))
+files = sorted(glob("./data/seasonal_p90_500km_1960/*_station_moving_list_all_events.csv"))
 
 # %%
 # Define distance bins
@@ -154,8 +154,5 @@ for file in files:
         df_bins.to_csv(file.replace("station","pair_bins"))
         
         clear_output(wait=True)
-
-# %%
-print("hi")
 
 # %%
